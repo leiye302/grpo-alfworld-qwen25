@@ -1,0 +1,27 @@
+{
+  "repository": "https://github.com/ZJU-REAL/SDAR.git",
+  "commit": "29dcb12a55d8fc17ba6ae03fd0a69048f43051f3",
+  "native_launcher": "examples/grpo_trainer/run_alfworld.sh",
+  "patch_sha256": "4fd96ab717de855ae64b1dff4a272f09a526790659961df26fb1320b2d5ebd3c",
+  "seen140_sha256": "bb3a1d67751b04ef0d03bcba0bd4b7c97d98f86ebcf20160985918256f957cb8",
+  "unchanged_files": {
+    "verl/trainer/ppo/ray_trainer.py": "47912490bc2e0de5999ac9588279bf38c87839145cb2101da1ab614f83a02023",
+    "verl/trainer/ppo/core_algos.py": "5043f97b87b00ab5c5d907022ea6cf148b935fdb71c37222a3f9c33ccfaf1dc6",
+    "verl/workers/actor/dp_actor.py": "c53da24aaf2ec308e7cce7be866b322890934896aa5e1ba575e8768c5fd48cd1",
+    "verl/workers/fsdp_workers.py": "7d70d685bbad4711ebd17595698cbc9a8bc379c5da20b12203fadf51f063b2cc",
+    "agent_system/multi_turn_rollout/rollout_loop.py": "23b9f35d8eb2cd87effd763286aefe6868d19473a4266b94e51c3390c92d035b",
+    "agent_system/environments/env_package/alfworld/projection.py": "e794d1217d613ef4b550cfe4bfd0b39b4deb10d47493f31f78aef7b5ebf6dd98",
+    "agent_system/environments/prompts/alfworld.py": "f24267701a1d0fffb81c6e9b69f259d63dba9378515db4764f82f13f23bc9084",
+    "agent_system/memory/memory.py": "d9940bf9d49442f76667b80aff7e80b7c93f37bef015b06641e60229bb3f0d9c",
+    "examples/grpo_trainer/run_alfworld.sh": "a5ce7f91b66e45fdfd202a0b135f2274174569c6ea4ac053d3dab32b9c6bad78",
+    "agent_system/reward_manager/episode.py": "f9a71d8ccba625f2dc218594a3f9edaa2894306a1accc62cd19832ef4c521428",
+    "verl/trainer/ppo/reward.py": "f49d92230fba7b61939f8aef6402e4ee584db72944042a8a2409360b99a35653",
+    "verl/trainer/config/ppo_trainer.yaml": "0f69218f169aed29a827818ca76fb26f7c1c5632bd9cbe318884617d5aa228cc"
+  },
+  "patched_files": {
+    "agent_system/environments/env_manager.py": "1e0d2417c318a141c0c6fbad5c6b3237a7f4858541743a675ebc5dc6ef8ef326",
+    "agent_system/environments/env_package/alfworld/envs.py": "053a1b5fdd65a6f402609eb1f47081ad167caa99c5f4aa23e79225347827097a",
+    "verl/trainer/main_ppo.py": "4b471656730e10870af8550b00266f4194dc4df8920e06450e6d01e812cb6bd1",
+    "agent_system/environments/env_package/alfworld/fixed_validation.py": "3f63b5f3ab11789e3b0e7e2f0a1d68c0a305efaeba2fb4fabc2ea2c8fb87f526"
+  }
+}

@@ -45,8 +45,10 @@ actor_rollout_ref.rollout.n remains one, as required by upstream.
   local JSON metrics and final HF export. Official launcher disables saves.
 - Pool16 independent original text environments per Ray actor; preserve
   environment seeds, transitions, identities and result order.
-- Read-only evaluation/logging subclass, with the original training loop
-  called through super. Only its import alias is changed in main_ppo.
+- Evaluation/logging subclass, with the original training loop called through
+  super. Only its import alias is changed in main_ppo. A storage-only mixin
+  wraps native save/load to replace unsafe pre-save rotation with transactional
+  publication and disk-derived retention after restarts.
 
 No source implementing advantages, policy gradients, Actor backward, FSDP,
 reward, response generation, observation history, prompt or action projection
@@ -70,8 +72,9 @@ dry-run commands before GPU work. On actual hardware confirm:
 2. Real environment reset, model response, parsed action, execution and feedback.
 3. Finite rewards/advantages/loss/grad norm and actual parameter updates.
 4. No Teacher scoring, skill injection or auxiliary distillation metrics.
-5. First save contains every rank's model/optimizer/extra state plus data.pt
-   and Actor configuration; reject partial or foreign checkpoints.
+5. First save contains every rank's model/optimizer/extra state plus data.pt,
+   Actor configuration/tokenizer, and a verified CHECKPOINT_COMPLETE.json.
+   Confirm native GPU load succeeds before relying on unattended recovery.
 
 CPU CI executes native tensor-level GRPO advantage/loss/backward tests and
 configuration/source contracts. It is not proof of GPU memory fit, NCCL,
@@ -96,6 +99,32 @@ binding. Checkpoints include optimizer, scheduler/RNG extra and dataloader,
 but do not snapshot TextWorld environment iterators. Exact uninterrupted vs
 resumed rollout identity is not promised. First-save failure has no complete
 intermediate resume point; do not silently call a new run a continuation.
+
+The native FSDP serializer and loader are unchanged. The storage wrapper writes
+all ranks into a same-filesystem hidden staging directory, with upstream's
+pre-save/in-memory pruning disabled for that call only. It flushes files and
+directories, requires all 24 rank shards plus data/config/tokenizer files,
+checks torch.save ZIP structure/CRCs without unpickling, and seals every file's
+size/SHA256 and the run-binding hash in CHECKPOINT_COMPLETE.json. The complete
+directory is atomically renamed into global_step_N; a full SHA reread must
+succeed before atomically updating latest and deleting older verified saves.
+On a failed new save, old complete saves and the canonical pointer survive.
+
+Both saving and --resume scan checkpoint directories numerically, retaining
+the newest two verified same-binding saves, not a process-local saved-path
+list. Resume repairs a stale/missing/broken pointer and pins the native loader
+to the exact verified directory. Legacy native saves inside the same bound run
+are structurally/CRC/hash validated and sealed on first recovery. Partial,
+corrupt, linked or foreign-manifest directories and interrupted staging trees
+remain evidence; they are neither valid resume points nor automatic deletion
+targets. Thus there can be extra *unverified* evidence on disk after failures.
+Recovery/export/saving use the same exclusive run lock. Exports verify their
+source, and hf150 remains outside resumable-checkpoint rotation.
+
+Checksum reads add storage I/O only. Keep enough free space for two existing
+complete saves plus a third in progress; never delete a good save to make room
+for an unverified one. CPU tests cover eight-rank small-file layouts, failure
+injection and real torch.save/load roundtrips, not eight-GPU FSDP/NCCL recovery.
 
 Budget at least300GiB free, preferably400GiB, for both models, newest two
 complete checkpoints/size, public resources and save/export peaks. This is

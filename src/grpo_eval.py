@@ -1,12 +1,13 @@
-"""Read-only metrics/evaluation hooks around the unchanged native GRPO trainer."""
+"""Metrics/evaluation and transactional storage around the native GRPO trainer."""
 import json
 import os
 from pathlib import Path
 from common import atomic_json, protocol, tasks
+from checkpoint_io import NativeCheckpointMixin
 from verl.trainer.ppo.ray_trainer import RayPPOTrainer
 
 
-class FixedSeenTrainer(RayPPOTrainer):
+class FixedSeenTrainer(NativeCheckpointMixin, RayPPOTrainer):
     def fit(self):
         from verl.utils.tracking import Tracking
         original = Tracking.log

@@ -7,7 +7,8 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-from common import ROOT, UPSTREAM, WORLD_SIZE, atomic_json, checkpoint_complete, devices, load, sha, tasks
+from common import ROOT, UPSTREAM, WORLD_SIZE, atomic_json, devices, load, sha, tasks
+from checkpoint_io import CheckpointStore
 from setup import verify
 
 
@@ -122,16 +123,19 @@ def launch(args):
     if args.resume:
         if args.command != 'train' or json.loads((run_dir / 'binding.json').read_text()) != binding:
             raise RuntimeError('Resume binding differs from the original run')
-        pointer = run_dir / 'checkpoints/latest_checkpointed_iteration.txt'
-        step = int(pointer.read_text())
-        if not 0 < step < 150:
-            raise RuntimeError('Expected a complete intermediate update below 150')
-        checkpoint_complete(run_dir / 'checkpoints' / f'global_step_{step}')
     else:
         run_dir.mkdir(parents=True, exist_ok=False)
         atomic_json(run_dir / 'binding.json', binding)
         data(run_dir)
     with run_lock(run_dir):
+        if args.resume:
+            # Disk-wide recovery and pruning must happen under the same controller lock.
+            checkpoint = CheckpointStore(run_dir).recover()
+            step = int(checkpoint.name.removeprefix('global_step_'))
+            if not 0 < step < 150:
+                raise RuntimeError('Training already completed or no valid intermediate update below 150')
+            cfg.trainer.resume_mode = 'resume_path'
+            cfg.trainer.resume_from_path = str(checkpoint)
         import torch
         if torch.cuda.device_count() != WORLD_SIZE:
             raise RuntimeError('Eight allocated CUDA devices are required')
@@ -163,7 +167,7 @@ def launch(args):
         try:
             run_ppo(cfg)
             if args.command == 'train':
-                checkpoint_complete(run_dir / 'checkpoints/global_step_150')
+                CheckpointStore(run_dir).verify(run_dir / 'checkpoints/global_step_150')
             atomic_json(run_dir / 'completion.json', {'status': 'completed', 'command': args.command,
                         'updates': 150 if args.command == 'train' else 0, 'binding': binding})
         finally:
@@ -189,16 +193,20 @@ def main():
     if args.command == 'export':
         verify()
         run_dir = (args.run_dir or ROOT / 'runs' / ('grpo_' + args.size)).resolve()
-        checkpoint = checkpoint_complete(run_dir / 'checkpoints/global_step_150')
-        target = run_dir / 'hf150'
-        if target.exists():
-            raise RuntimeError('Export destination already exists; inspect it rather than overwrite')
-        env = dict(os.environ, PYTHONPATH=str(UPSTREAM))
-        subprocess.run([sys.executable, str(UPSTREAM / 'scripts/model_merger.py'), 'merge', '--backend', 'fsdp',
-                        '--local_dir', str(checkpoint / 'actor'), '--target_dir', str(target)],
-                       cwd=UPSTREAM, env=env, check=True)
-        files = {p.name: sha(p) for p in target.iterdir() if p.is_file()}
-        atomic_json(run_dir / 'export_manifest.json', {'step': 150, 'files': files})
+        with run_lock(run_dir):
+            store = CheckpointStore(run_dir)
+            target = run_dir / 'hf150'
+            if target.exists():
+                raise RuntimeError('Export destination already exists; inspect it rather than overwrite')
+            checkpoint = store.recover()
+            if checkpoint.name != 'global_step_150':
+                raise RuntimeError('Export requires the verified final update 150 checkpoint')
+            env = dict(os.environ, PYTHONPATH=str(UPSTREAM))
+            subprocess.run([sys.executable, str(UPSTREAM / 'scripts/model_merger.py'), 'merge', '--backend', 'fsdp',
+                            '--local_dir', str(checkpoint / 'actor'), '--target_dir', str(target)],
+                           cwd=UPSTREAM, env=env, check=True)
+            files = {p.name: sha(p) for p in target.iterdir() if p.is_file()}
+            atomic_json(run_dir / 'export_manifest.json', {'step': 150, 'files': files})
     else:
         if args.command == 'eval' and not args.model:
             parser.error('Evaluation requires --model /path/to/exported-hf-model')

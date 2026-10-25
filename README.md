@@ -146,7 +146,14 @@ bash scripts/train.sh --size 1.5b --resume
 # 或 --size 3b --resume
 ```
 
-原生保存model、optimizer、scheduler/rank RNG相关extra_state与dataloader。启动检查全部八rank文件、原始模型/配方/源码/评测绑定；缺文件或另一配方的断点会拒绝。TextWorld环境迭代器本身不在原生断点里，不能承诺续跑与不中断训练逐位一致。首个20步存盘若未完成，不存在可完整恢复的中途断点。
+原生保存model、optimizer、scheduler/rank RNG相关extra_state与dataloader；不改变序列化内容、训练循环或随机数。**保存顺序为：写新断点 → 完整性与逐文件SHA256校验 → 原子发布 → 更新latest指针 → 清理旧断点。**
+
+- 原生八rank先写到同一磁盘的私有 `.saving-*` 目录；临时关闭上游“写新断点前删除旧文件”的逻辑。任意rank失败、磁盘写满、文件缺失或校验失败时，不删除已有的完整断点。
+- 检查全部八rank的model/optimizer/extra、data.pt、配置和tokenizer；检查原生torch.save归档结构与CRC，并生成 `CHECKPOINT_COMPLETE.json`，记录同一run绑定及每个文件的字节数/SHA256。发布后重新读取SHA，确认成功才清理旧的。
+- 每次保存及 `--resume` 都扫描磁盘，按update编号保留**最近两份已校验的完整断点**，不依赖内存中的历史列表。续跑会修复缺失、损坏或过时的latest指针；只从同一模型/配方/源码/评测绑定下的最新完整断点恢复。旧版本无完成清单的原生断点，首次续跑会在同一run绑定下完整检查并补清单。
+- 不完整、损坏、不同绑定或带链接的目录不参与续跑/保留计数，也不会被自动删除；私有暂存目录保留为故障证据。没有完整断点时明确报错，不偷偷从0重跑。检查失败的目录可能额外占空间，需人工核查后再处理。
+
+完整校验增加存盘I/O，不改变loss、采样量、更新数或验证设置。**保存时必须容得下“旧两份＋新一份”的峰值，不能靠提前删旧来腾空间。** TextWorld环境迭代器本身不在原生断点里，不能承诺续跑与不中断训练逐位一致。首个20步存盘若未完成，不存在可完整恢复的中途断点。
 
 `run_both.sh`是首次执行队列；中断后用单尺寸resume完成当前训练并export，再单独启动下一尺寸。不会隐式覆盖旧输出或从0重跑。每尺寸只保留最近两份完整断点及最终导出；不因最终体积小而忽略第三份保存时的峰值空间。
 
@@ -156,12 +163,12 @@ bash scripts/train.sh --size 1.5b --resume
 
 1. 固定seen140选择及每任务seed；
 2. 每16个独立原生文字环境共用一个Ray进程，保留原seed、状态和返回顺序；
-3. 将main_ppo的Trainer别名指向只记录指标/固定评测的子类。其 `fit` 调用原生super，不复制或重写训练循环。
+3. 将main_ppo的Trainer别名指向记录指标/固定评测的子类。其 `fit` 调用原生super，不复制或重写训练循环；另以存储适配层包住原生save/load，先校验新断点再轮转旧断点，并在续跑时从磁盘重建保留列表。
 
 另外只增加公开下载、项目相对路径、固定1.5B版本、150步预算、本地JSON日志、10步验证和20步/最终保存。原八卡、TP2、vLLM显存0.6与graph设置不变。详见 [docs/REPRODUCTION.md](docs/REPRODUCTION.md)。原脚本中的作者本机conda激活、代理、路径和wandb占位配置不会执行或继承。
 
 ## 7. 验证范围与许可
 
-GitHub Actions在干净Linux检出中直接从公开上游准备源码、对照官方GRPO脚本、测试两尺寸配方、Teacher/蒸馏禁入、真实GRPO tensor梯度、固定任务、环境池、八rank断点及shell入口。**没有附带训后成绩，也未在8×A100上实际训练；运行者仍须验收首轮GPU运行。**
+GitHub Actions在干净Linux检出中直接从公开上游准备源码、对照官方GRPO脚本、测试两尺寸配方、Teacher/蒸馏禁入、真实GRPO tensor梯度、固定任务、环境池、八rank断点及shell入口。存盘测试包括缺rank/写满/损坏/指针中断、续跑轮转、链接拒绝和真实CPU torch.save/load小文件往返；不是8rank GPU FSDP恢复实测。**没有附带训后成绩，也未在8×A100上实际训练；运行者仍须验收首轮GPU运行。**
 
 包装代码和上游框架采用Apache-2.0。Qwen2.5-1.5B-Instruct是Apache-2.0；Qwen2.5-3B-Instruct为Qwen Research License，不能把3B权重一概称为Apache许可。ALFWorld资源遵守其来源许可。见 [THIRD_PARTY.md](THIRD_PARTY.md)。

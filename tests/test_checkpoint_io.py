@@ -425,11 +425,11 @@ def test_trainer_mro_keeps_native_fit_save_and_load_dispatch(monkeypatch):
 
 def test_training_sampling_loss_and_upstream_settings_unchanged():
     hashes = {
-        'configs/experiment.json': '364a43a888e6f583afb992d96e576f74c176583483af9a2463c4f7a9287a67ef',
-        'configs/upstream.json': '438594db2ada0374586100ee670ae935468444d7a67d4f42415e88b63ecc9930',
+        'configs/experiment.json': 'a605fa0d64ebe816544302789798be1b9757f21720605f3139d49f22244dd6b0',
+        'configs/upstream.json': '4d1ec1e0bd86a0956bddf3f30bfead5418d1fb6c41ac65a3b75f005f66aaad97',
         'configs/models.json': '972e825756799c75c8471864402c207170e68454532c5f4e70e7ff64275ffd00',
         'configs/seen140_tasks.json': 'bb3a1d67751b04ef0d03bcba0bd4b7c97d98f86ebcf20160985918256f957cb8',
-        'patches/runtime.patch': '4fd96ab717de855ae64b1dff4a272f09a526790659961df26fb1320b2d5ebd3c',
+        'patches/runtime.patch': '33d97e013af9971bc3eb656566cfaea60aacc292467ab7213ad74f491f1c4f84',
     }
     for name, expected in hashes.items():
         assert hashlib.sha256((ROOT / name).read_bytes()).hexdigest() == expected, name

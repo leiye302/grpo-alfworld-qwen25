@@ -162,13 +162,19 @@ bash scripts/train.sh --size 1.5b --resume
 12个未修改核心文件有SHA锁，涵盖GRPO优势/损失、原生 `RayPPOTrainer.fit`、Actor backward、FSDP、rollout、reward、prompt、history和动作解析。`patches/runtime.patch`只包含：
 
 1. 固定seen140选择及每任务seed；
-2. 每16个独立原生文字环境共用一个Ray进程，保留原seed、状态和返回顺序；
+2. 恢复官方每环境一个Ray actor，保留原seed、状态和返回顺序；
 3. 将main_ppo的Trainer别名指向记录指标/固定评测的子类。其 `fit` 调用原生super，不复制或重写训练循环；另以存储适配层包住原生save/load，先校验新断点再轮转旧断点，并在续跑时从磁盘重建保留列表。
 
 另外只增加公开下载、项目相对路径、固定1.5B版本、150步预算、本地JSON日志、10步验证和20步/最终保存。原八卡、TP2、vLLM显存0.6与graph设置不变。详见 [docs/REPRODUCTION.md](docs/REPRODUCTION.md)。原脚本中的作者本机conda激活、代理、路径和wandb占位配置不会执行或继承。
 
 ## 7. 验证范围与许可
 
-GitHub Actions在干净Linux检出中直接从公开上游准备源码、对照官方GRPO脚本、测试两尺寸配方、Teacher/蒸馏禁入、真实GRPO tensor梯度、固定任务、环境池、八rank断点及shell入口。存盘测试包括缺rank/写满/损坏/指针中断、续跑轮转、链接拒绝和真实CPU torch.save/load小文件往返；不是8rank GPU FSDP恢复实测。**没有附带训后成绩，也未在8×A100上实际训练；运行者仍须验收首轮GPU运行。**
+GitHub Actions在干净Linux检出中直接从公开上游准备源码、对照官方GRPO脚本、测试两尺寸配方、Teacher/蒸馏禁入、真实GRPO tensor梯度、固定任务、原生环境并发、八rank断点及shell入口。存盘测试包括缺rank/写满/损坏/指针中断、续跑轮转、链接拒绝和真实CPU torch.save/load小文件往返；不是8rank GPU FSDP恢复实测。**没有附带训后成绩，也未在8×A100上实际训练；运行者仍须验收首轮GPU运行。**
 
 包装代码和上游框架采用Apache-2.0。Qwen2.5-1.5B-Instruct是Apache-2.0；Qwen2.5-3B-Instruct为Qwen Research License，不能把3B权重一概称为Apache许可。ALFWorld资源遵守其来源许可。见 [THIRD_PARTY.md](THIRD_PARTY.md)。
+
+## 2026-10-26 执行设置更正
+
+撤回额外添加的串行环境分组，恢复官方每环境一个 Ray actor、每 actor 0.1 CPU。模型尺寸、获配卡数、训练量、loss、固定 seen140、验证频率和已约定的断点规则不变。未改写上游 rollout、Teacher 或优化器。
+
+已有 checkout 的旧 `.deps/sdar` 仍带旧补丁：在训练停止并保留断点后，将它改名备份，再运行 `python src/setup.py --framework`；或在新的目录重新克隆。不要删除 `runs/`，也不要在运行中的任务里替换依赖。旧配方与新配方的绑定 SHA 不同，禁止绕过恢复校验直接续跑。此更正通过 CPU/干净检出检查不等于已完成 A100 CUDA/NCCL/vLLM 实测。
